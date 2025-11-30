@@ -1,0 +1,32 @@
+# --- システム・環境 ---
+# Pythonの一時ファイル
+__pycache__/
+*.py[cod]
+
+# 仮想環境
+venv/
+
+# --- ビルド生成物 ---
+# exe化の過程で作られる重いフォルダ
+build/
+dist/
+
+# --- アプリ固有の除外 ---
+# ユーザーごとの設定ファイル（公開すべきではない）
+LeanFocus_config.json
+
+# 過去のプロトタイプ（リポジトリを綺麗に保つため除外）
+version/
+
+# --- アセット（音源）の除外 ---
+# 音源ファイルは著作権＆容量の観点から除外
+assets/sounds/*.mp3
+assets/sounds/*.wav
+assets/sounds/*.ogg
+
+# ※ 以下のファイルは公開（アップロード）されます：
+# - assets/img/icon.png
+# - assets/sounds/sound_names.json (定義ファイル)
+# - assets/CREDITS.txt
+# - LeanFocus.py
+# - LeanFocus.spec
