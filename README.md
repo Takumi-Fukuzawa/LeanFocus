@@ -1,7 +1,7 @@
 # LeanFocus
 LeanFocus は、Windows専用のタスクトレイ常駐型ポモドーロタイマーです。
 メインウィンドウを排除し、タスクトレイとフローティングオーバーレイのみで構成されるUIにより、作業画面の占有領域とシステム負荷を最小化しています。  
-   [Englishversion is available below](#LeanFocus(English))  
+   > [English version is available below](#leanfocusenglish)  
 
 # 特徴
 - **タスクトレイ常駐型設計**: メインウィンドウを持たず、すべての操作をタスクトレイアイコンのコンテキストメニューから実行します。  
