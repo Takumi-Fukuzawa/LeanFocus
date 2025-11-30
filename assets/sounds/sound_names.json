@@ -1,12 +1,39 @@
 {
     "Classicals.de - Pachelbel - Canon in D major - P. 37.wav": "Pachelbel - Canon in D major",
-    "fireplace-loop-original-noise-178209.mp3": "焚火", 
-    "waves-white-noise-9777.mp3": "さざ波", 
-    "crickets-chirping_animal_insect_sound-206330.mp3": "夏の夜の虫の声", 
-    "cricket-sound-212751.mp3": "すず虫", 
-    "heavy-rain-the-day-145472.mp3": "傘を打ち付ける雨", 
-    "rain1.wav": "大雨", 
-    "rain2.wav": "雨", 
-    "rain3.wav": "小雨", 
-    "soft-brown-noise-299934.mp3": "ソフトブラウンノイズ"
+    "fireplace-loop-original-noise-178209.mp3": {
+        "ja": "焚き火",
+        "en": "Bonfire"
+    },
+    "waves-white-noise-9777.mp3": {
+        "ja": "さざ波",
+        "en": "Waves"
+    }, 
+    "crickets-chirping_animal_insect_sound-206330.mp3": {
+        "ja": "夏の夜の虫の声",
+        "en": "Summer_night_insect_sound"
+    }, 
+    "cricket-sound-212751.mp3": {
+        "ja": "すず虫",
+        "en": "Bell_crickets"
+    }, 
+    "heavy-rain-the-day-145472.mp3": {
+        "ja": "傘を打ち付ける雨",
+        "en": "Rain_umbrella"
+    }, 
+    "rain1.wav": {
+        "ja": "大雨",
+        "en": "Heavy_rain"
+    }, 
+    "rain2.wav": {
+        "ja": "雨",
+        "en": "Rain"
+    }, 
+    "rain3.wav": {
+        "ja": "小雨",
+        "en": "Light_Rain"
+    }, 
+    "soft-brown-noise-299934.mp3": {
+        "ja": "ソフトブラウンノイズ",
+        "en": "Soft_brown_noise"
+    }
 }

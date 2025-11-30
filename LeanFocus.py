@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 import pystray
 import pygame
 import ctypes
+import locale # [新機能] 言語設定の取得に使用
 
 # --- Windowsの高DPIスケーリングに対応 ---
 try:
@@ -35,6 +36,79 @@ CREDITS_FILE = os.path.join(ASSET_DIR, "CREDITS.txt")
 
 SUPPORTED_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 
+# --- [新機能] 翻訳辞書 ---
+TRANSLATIONS = {
+    "ja": {
+        "settings_title": "設定",
+        "sound_sec": "サウンド設定",
+        "volume": "音量調整",
+        "visual_sec": "表示設定 (タイマー)",
+        "size": "サイズ調整",
+        "opacity": "不透明度",
+        "window_hint": "※ウィンドウ位置はドラッグで移動・保存されます",
+        "close": "閉じる",
+        "work_noise": "作業用ノイズ",
+        "break_noise": "休憩用ノイズ",
+        "none": "なし", # 表示用
+        "stop_timer": "タイマーを停止",
+        "show_timer": "タイマーを表示",
+        "settings_menu": "設定...",
+        "credits": "クレジット",
+        "quit": "アプリを終了",
+        "state_stopped": "停止中",
+        "state_work": "作業中",
+        "state_break": "休憩中",
+        "state_paused": "一時停止中",
+        "status_fmt": "状態: {state} (残り {time})",
+        "start": "タイマーを開始",
+        "resume": "タイマーを再開",
+        "pause": "タイマーを一時停止",
+    },
+    "en": {
+        "settings_title": "Settings",
+        "sound_sec": "Sound Settings",
+        "volume": "Volume",
+        "visual_sec": "Timer Appearance",
+        "size": "Size",
+        "opacity": "Opacity",
+        "window_hint": "* Window position is saved on drag & drop.",
+        "close": "Close",
+        "work_noise": "Work Noise",
+        "break_noise": "Break Noise",
+        "none": "None",
+        "stop_timer": "Stop Timer",
+        "show_timer": "Show Timer",
+        "settings_menu": "Settings...",
+        "credits": "Credits",
+        "quit": "Quit",
+        "state_stopped": "Stopped",
+        "state_work": "Working",
+        "state_break": "Break",
+        "state_paused": "Paused",
+        "status_fmt": "Status: {state} (Left {time})",
+        "start": "Start Timer",
+        "resume": "Resume Timer",
+        "pause": "Pause Timer",
+    }
+}
+
+# 言語の自動検出
+def get_language():
+    try:
+        lang_code, _ = locale.getdefaultlocale()
+        if lang_code and lang_code.startswith('ja'):
+            return 'ja'
+    except:
+        pass
+    return 'en' # デフォルトは英語
+
+CURRENT_LANG = get_language()
+
+def tr(key):
+    """翻訳ヘルパー関数"""
+    return TRANSLATIONS[CURRENT_LANG].get(key, key)
+
+
 class ConfigWindow(tk.Toplevel):
     """
     設定ウィンドウ（表示・音量）
@@ -42,64 +116,103 @@ class ConfigWindow(tk.Toplevel):
     def __init__(self, parent, timer_window):
         super().__init__(parent)
         self.timer_window = timer_window
-        self.app = timer_window.timer_app # アプリロジックへの参照
+        self.app = timer_window.timer_app
         
-        self.title("設定")
-        self.geometry("300x380") # 高さを拡張
+        self.title(tr("settings_title"))
+        self.geometry("320x450")
         self.resizable(False, False)
         self.attributes("-topmost", True)
 
-        # 全体コンテナ
         main_frame = ttk.Frame(self, padding="20")
         main_frame.pack(fill='both', expand=True)
 
-        # --- サウンド設定セクション ---
-        ttk.Label(main_frame, text="サウンド設定", font=("", 10, "bold")).pack(anchor='w', pady=(0, 10))
+        # === サウンド設定エリア ===
+        ttk.Label(main_frame, text=tr("sound_sec"), font=("", 10, "bold")).pack(anchor='w', pady=(0, 10))
         
-        # 音量
-        ttk.Label(main_frame, text="音量調整").pack(anchor='w')
-        # デフォルト1.0 (100%)
+        # 音源リストの取得
+        # "None" を表示用の言葉（なし/None）に変換して表示したいが、
+        # Comboboxの値と内部ロジックを一致させる必要がある。
+        # ここではシンプルに、辞書のキーをそのまま使う。
+        # ただし "None" キーの表示だけローカライズする工夫を入れる。
+        
+        self.sound_keys = sorted(list(self.app.available_noises.keys()))
+        if "None" in self.sound_keys:
+            self.sound_keys.remove("None")
+            self.sound_keys.insert(0, "None")
+        
+        # 表示用のリストを作成 (None -> なし/None)
+        display_values = [tr("none") if k == "None" else k for k in self.sound_keys]
+
+        # 1. 作業用ノイズ
+        ttk.Label(main_frame, text=tr("work_noise")).pack(anchor='w')
+        current_work = self.app.config.get("work_noise", "None")
+        # 内部キーから表示用インデックスを探す
+        work_idx = self.sound_keys.index(current_work) if current_work in self.sound_keys else 0
+        
+        self.combo_work = ttk.Combobox(main_frame, values=display_values, state="readonly")
+        self.combo_work.current(work_idx)
+        self.combo_work.pack(fill='x', pady=(0, 10))
+        self.combo_work.bind("<<ComboboxSelected>>", lambda e: self.on_sound_change("work"))
+
+        # 2. 休憩用ノイズ
+        ttk.Label(main_frame, text=tr("break_noise")).pack(anchor='w')
+        current_break = self.app.config.get("break_noise", "None")
+        break_idx = self.sound_keys.index(current_break) if current_break in self.sound_keys else 0
+
+        self.combo_break = ttk.Combobox(main_frame, values=display_values, state="readonly")
+        self.combo_break.current(break_idx)
+        self.combo_break.pack(fill='x', pady=(0, 10))
+        self.combo_break.bind("<<ComboboxSelected>>", lambda e: self.on_sound_change("break"))
+
+        # 3. 音量
+        ttk.Label(main_frame, text=tr("volume")).pack(anchor='w')
         self.volume_var = tk.DoubleVar(value=self.app.config.get("volume", 1.0))
         scale_vol = ttk.Scale(main_frame, from_=0.0, to=1.0, variable=self.volume_var, command=self.on_volume_change)
-        scale_vol.pack(fill='x', pady=(0, 15))
+        scale_vol.pack(fill='x', pady=(0, 5))
 
-        # 区切り線
-        ttk.Separator(main_frame, orient='horizontal').pack(fill='x', pady=10)
+        ttk.Separator(main_frame, orient='horizontal').pack(fill='x', pady=15)
 
-        # --- 表示設定セクション ---
-        ttk.Label(main_frame, text="表示設定 (タイマー)", font=("", 10, "bold")).pack(anchor='w', pady=(0, 10))
+        # === 表示設定エリア ===
+        ttk.Label(main_frame, text=tr("visual_sec"), font=("", 10, "bold")).pack(anchor='w', pady=(0, 10))
 
         # サイズ
-        ttk.Label(main_frame, text="サイズ調整").pack(anchor='w')
+        ttk.Label(main_frame, text=tr("size")).pack(anchor='w')
         self.size_var = tk.DoubleVar(value=timer_window.font_size)
         scale_size = ttk.Scale(main_frame, from_=12, to=72, variable=self.size_var, command=self.on_visual_change)
-        scale_size.pack(fill='x', pady=(0, 15))
+        scale_size.pack(fill='x', pady=(0, 10))
 
         # 透明度
-        ttk.Label(main_frame, text="不透明度").pack(anchor='w')
+        ttk.Label(main_frame, text=tr("opacity")).pack(anchor='w')
         self.alpha_var = tk.DoubleVar(value=timer_window.opacity)
         scale_alpha = ttk.Scale(main_frame, from_=0.1, to=1.0, variable=self.alpha_var, command=self.on_visual_change)
         scale_alpha.pack(fill='x', pady=(0, 5))
 
         # 説明
-        ttk.Label(main_frame, text="※ウィンドウ位置はドラッグで移動・保存されます", font=("", 8), foreground="gray").pack(pady=(5, 0))
+        ttk.Label(main_frame, text=tr("window_hint"), font=("", 8), foreground="gray").pack(pady=(5, 0))
 
         # 閉じるボタン
-        ttk.Button(main_frame, text="閉じる", command=self.destroy).pack(side='bottom', anchor='e', pady=10)
+        ttk.Button(main_frame, text=tr("close"), command=self.destroy).pack(side='bottom', anchor='e', pady=10)
+
+    def on_sound_change(self, noise_type):
+        """コンボボックスの変更をアプリに反映"""
+        # 表示用インデックスから内部キーを取得
+        if noise_type == "work":
+            idx = self.combo_work.current()
+            key = self.sound_keys[idx]
+        else:
+            idx = self.combo_break.current()
+            key = self.sound_keys[idx]
+        
+        self.app.set_noise_config(noise_type, key)
 
     def on_visual_change(self, event=None):
-        """見た目の変更を適用"""
         self.timer_window.apply_visual_settings(self.size_var.get(), self.alpha_var.get())
 
     def on_volume_change(self, event=None):
-        """音量の変更を適用"""
         self.app.set_volume(self.volume_var.get())
 
 
 class FloatingTimer(tk.Tk):
-    """
-    フローティングタイマーウィンドウ
-    """
     def __init__(self, timer_app):
         super().__init__()
         self.timer_app = timer_app
@@ -136,8 +249,6 @@ class FloatingTimer(tk.Tk):
         self.update_timer_display()
 
     def refresh_layout(self):
-        """ウィンドウサイズと位置を強制的に再適用する"""
-        # 幅係数 9.5 (文字切れ対策済み)
         win_w = int(self.font_size * 9.5)
         win_h = int(self.font_size * 2.0)
         
@@ -268,7 +379,8 @@ class PomodoroTimer:
         except pygame.error: pass
 
     def _scan_assets(self) -> dict:
-        noises = {"なし": None}
+        # [変更] 内部キーを "None" (英語) に統一
+        noises = {"None": None}
         if not os.path.isdir(SOUND_DIR): return noises
         
         name_map = {}
@@ -283,7 +395,12 @@ class PomodoroTimer:
                 file_path = os.path.join(SOUND_DIR, filename)
                 if os.path.isfile(file_path) and filename.lower().endswith(SUPPORTED_EXTENSIONS):
                     if filename in name_map:
-                        menu_key = name_map[filename]
+                        entry = name_map[filename]
+                        # [新機能] 多言語対応: 辞書なら現在の言語を取得、文字列ならそのまま
+                        if isinstance(entry, dict):
+                            menu_key = entry.get(CURRENT_LANG, entry.get("en", filename))
+                        else:
+                            menu_key = str(entry)
                     else:
                         menu_key = os.path.splitext(filename)[0]
                     noises[menu_key] = file_path
@@ -291,9 +408,8 @@ class PomodoroTimer:
         return noises
 
     def load_config(self):
-        # デフォルト設定 (volume: 1.0 = 100%)
         default = {
-            "work_noise": "なし", "break_noise": "なし", "volume": 1.0,
+            "work_noise": "None", "break_noise": "None", "volume": 1.0,
             "show_timer": False, 
             "font_size": 24, "opacity": 0.7, "window_x": None, "window_y": None
         }
@@ -302,15 +418,21 @@ class PomodoroTimer:
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                 d = json.load(f)
             
-            work = d.get("work_noise", "なし")
-            if work not in self.available_noises: work = "なし"
-            break_ = d.get("break_noise", "なし")
-            if break_ not in self.available_noises: break_ = "なし"
+            # [互換性] 古い設定の "なし" を "None" に読み替える
+            work = d.get("work_noise", "None")
+            if work == "なし": work = "None"
+            
+            break_ = d.get("break_noise", "None")
+            if break_ == "なし": break_ = "None"
+
+            # 検証
+            if work not in self.available_noises: work = "None"
+            if break_ not in self.available_noises: break_ = "None"
             
             return {
                 "work_noise": work, 
                 "break_noise": break_,
-                "volume": d.get("volume", 1.0), # 音量設定
+                "volume": d.get("volume", 1.0),
                 "show_timer": d.get("show_timer", False),
                 "font_size": d.get("font_size", 24),
                 "opacity": d.get("opacity", 0.7),
@@ -332,7 +454,6 @@ class PomodoroTimer:
             ConfigWindow(self.floating_window, self.floating_window)
 
     def open_credits(self):
-        """CREDITS.txt を開く"""
         if os.path.exists(CREDITS_FILE):
             try:
                 if os.name == 'nt':
@@ -343,9 +464,7 @@ class PomodoroTimer:
             except Exception as e:
                 print(f"ファイルオープンエラー: {e}")
 
-    # --- [新機能] 音量設定 ---
     def set_volume(self, volume):
-        """音量を設定し、反映する (0.0 - 1.0)"""
         self.config["volume"] = volume
         try:
             pygame.mixer.music.set_volume(volume)
@@ -374,7 +493,6 @@ class PomodoroTimer:
         file_path = self.available_noises.get(noise_key)
         try:
             pygame.mixer.music.stop()
-            # [修正] 再生前に設定された音量を適用
             pygame.mixer.music.set_volume(self.config.get("volume", 1.0))
             
             if file_path and os.path.exists(file_path):
@@ -388,7 +506,7 @@ class PomodoroTimer:
 
     def start_pomodoro(self):
         if self.state == self.STATE_WORK or self.state == self.STATE_BREAK: return
-        sound_key = "なし"
+        sound_key = "None"
         if self.state == self.STATE_STOPPED:
             self.state = self.STATE_WORK
             self.remaining_time = WORK_DURATION
@@ -449,14 +567,24 @@ class PomodoroTimer:
             except Exception: pass
 
     def get_menu_state_text(self) -> str:
-        if self.state == self.STATE_STOPPED: return f"状態: {self.STATE_STOPPED}"
+        # 状態文字列の多言語対応
+        st_text = ""
+        if self.state == self.STATE_STOPPED: st_text = tr("state_stopped")
+        elif self.state == self.STATE_WORK: st_text = tr("state_work")
+        elif self.state == self.STATE_BREAK: st_text = tr("state_break")
+        elif self.state == self.STATE_PAUSED: st_text = tr("state_paused")
+        
+        if self.state == self.STATE_STOPPED:
+            return tr("status_fmt").format(state=st_text, time="--:--")
+        
         mins, secs = divmod(max(0, self.remaining_time), 60)
-        return f"状態: {self.state} (残り {mins:02d}:{secs:02d})"
+        time_str = f"{mins:02d}:{secs:02d}"
+        return tr("status_fmt").format(state=st_text, time=time_str)
 
     def get_start_stop_text(self) -> str:
-        if self.state == self.STATE_STOPPED: return "タイマーを開始"
-        elif self.state == self.STATE_PAUSED: return "タイマーを再開"
-        else: return "タイマーを一時停止"
+        if self.state == self.STATE_STOPPED: return tr("start")
+        elif self.state == self.STATE_PAUSED: return tr("resume")
+        else: return tr("pause")
 
     def quit_app(self):
         self.stop_event.set()
@@ -493,27 +621,31 @@ def run_tray_icon(timer_app):
         return timer_app.config.get("show_timer", False)
 
     def generate_noise_menu(type_):
-        key = "なし"
+        key = "None"
+        # 表示名を切り替える (None -> なし/None)
+        display_key = tr("none")
+        
         if key in timer_app.available_noises:
-            yield pystray.MenuItem(key, create_noise_callback(type_, key), checked=is_noise_checked(type_, key), radio=True)
-        for key in sorted([k for k in timer_app.available_noises if k != "なし"]):
+            yield pystray.MenuItem(display_key, create_noise_callback(type_, key), checked=is_noise_checked(type_, key), radio=True)
+        
+        for key in sorted([k for k in timer_app.available_noises if k != "None"]):
             yield pystray.MenuItem(key, create_noise_callback(type_, key), checked=is_noise_checked(type_, key), radio=True)
 
     menu = pystray.Menu(
         pystray.MenuItem(lambda text: timer_app.get_start_stop_text(), on_start_stop, default=True),
-        pystray.MenuItem("タイマーを停止", on_reset),
+        pystray.MenuItem(tr("stop_timer"), on_reset),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem(lambda text: timer_app.get_menu_state_text(), None, enabled=False),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("タイマーを表示", on_toggle_display, checked=is_display_checked),
-        pystray.MenuItem("設定...", on_open_settings),
+        pystray.MenuItem(tr("show_timer"), on_toggle_display, checked=is_display_checked),
+        pystray.MenuItem(tr("settings_menu"), on_open_settings),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("作業用ノイズ", pystray.Menu(lambda: generate_noise_menu("work"))),
-        pystray.MenuItem("休憩用ノイズ", pystray.Menu(lambda: generate_noise_menu("break"))),
+        pystray.MenuItem(tr("work_noise"), pystray.Menu(lambda: generate_noise_menu("work"))),
+        pystray.MenuItem(tr("break_noise"), pystray.Menu(lambda: generate_noise_menu("break"))),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("クレジット", on_open_credits),
+        pystray.MenuItem(tr("credits"), on_open_credits),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("アプリを終了", on_quit)
+        pystray.MenuItem(tr("quit"), on_quit)
     )
 
     try:
