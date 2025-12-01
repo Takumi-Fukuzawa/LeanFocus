@@ -1,17 +1,40 @@
-# LeanFocus
-LeanFocus は、Windows専用のタスクトレイ常駐型ポモドーロタイマーです。
-メインウィンドウを排除し、タスクトレイとフローティングオーバーレイのみで構成されるUIにより、作業画面の占有領域とシステム負荷を最小化しています。  
+<div align="center">
+  <img src="assets/img/icon.png" width="128" alt="LeanFocus Icon">
+  <h1>LeanFocus</h1>
+  <p>
+    Windows専用・タスクトレイ常駐型の没入型ポモドーロタイマー
+  </p>
+</div>
+
    > [English version is available below](#leanfocusenglish)  
 
+LeanFocus は、メインウィンドウを排除し、タスクトレイとフローティングオーバーレイのみで構成されるUIにより、作業画面の占有領域とシステム負荷を最小化したWindows用アプリケーションです。
+<div align="center">
+  <table>
+    <tr>
+      <td align="center"><b>基本操作: ドラッグで自由配置</b></td>
+      <td align="center"><b>メニュー: トレイから全操作</b></td>
+    </tr>
+    <tr>
+      <td><img src="docs/demo_basic.gif" width="350" alt="基本操作デモ"></td>
+      <td><img src="docs/demo_menu.gif" width="350" alt="メニュー操作デモ"></td>
+    </tr>
+  </table>
+</div>
+
 # 特徴
-- **タスクトレイ常駐型設計**: メインウィンドウを持たず、すべての操作をタスクトレイアイコンのコンテキストメニューから実行します。  
-- **フローティングオーバーレイ**: タイマーの残り時間を最前面に表示します。透過表示や非表示設定に対応しています。  
-- **自動オーディオ切り替え**: 作業時間と休憩時間のステータス変更に合わせて、設定された音源を自動的に再生・切り替えます。  
+- **タスクトレイ常駐型設計**:  
+  メインウィンドウを持たず、すべての操作をタスクトレイアイコンのコンテキストメニューから実行します。  
+- **フローティングオーバーレイ**:  
+  タイマーの残り時間を最前面に表示します。透過表示や非表示設定に対応しています。  
+- **自動オーディオ切り替え**:  
+  作業時間と休憩時間のステータス変更に合わせて、設定された音源を自動的に再生・切り替えます。  
 - **カスタマイズ機能**:
    - オーバーレイの透明度およびサイズの変更  
    - システム設定とは独立したアプリケーション音量調整  
    - ユーザー独自の音声ファイル（MP3/WAV/OGG）の追加
-- **軽量設計**: Python (tkinter + pygame + pystray) で実装されており、低リソース環境でも動作します。
+- **軽量設計**:  
+  Python (tkinter + pygame + pystray) で実装されており、低リソース環境でも動作します。
 
 # ダウンロード
 最新バージョンは [Releasesページ](https://github.com/Takumi-Fukuzawa/LeanFocus/releases)からダウンロードできます。  
@@ -24,6 +47,21 @@ LeanFocus は、Windows専用のタスクトレイ常駐型ポモドーロタイ
 2. **メニュー**: トレイアイコンを 右クリック すると、設定、リセット、終了などのメニューが開きます。
 3. **オーバーレイ**: タイマーの文字部分をドラッグすると、画面上の好きな位置に移動できます。位置は記憶されます。
 4. **設定**: メニューの「設定...」から、音源の選択、音量、見た目の調整ができます。
+
+&nbsp;
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="center"><b>コンテキストメニュー</b></td>
+      <td align="center"><b>設定ウィンドウ</b></td>
+    </tr>
+    <tr>
+      <td valign="top"><img src="docs/context_menu.png" width="300" alt="メニュー画面"></td>
+      <td valign="top"><img src="docs/settings.png" width="300" alt="設定画面"></td>
+    </tr>
+  </table>
+</div>
 
 # 好きな音源を追加する方法
 お気に入りのホワイトノイズや音楽を追加できます！  
@@ -53,18 +91,44 @@ LeanFocus は、Windows専用のタスクトレイ常駐型ポモドーロタイ
 &nbsp;  
 
 # LeanFocus(English)
+
+<div align="center">
+  <img src="assets/img/icon.png" width="128" alt="LeanFocus Icon">
+  <h1>LeanFocus</h1>
+  <p>
+    Immersive, system tray-based Pomodoro timer for Windows
+  </p>
+</div>
+
 LeanFocus is a lightweight, distraction-free Pomodoro timer designed for Windows.
 Instead of a bulky window, it resides quietly in your system tray and provides a minimal floating overlay to keep you focused.  
 
+<div align="center">
+  <table>
+    <tr>
+      <td align="center"><b>Basic Usage: Drag to Reposition</b></td>
+      <td align="center"><b>Menu: Full Control via Tray</b></td>
+    </tr>
+    <tr>
+      <td><img src="docs/demo_basic.gif" width="350" alt="Basic Usage Demo"></td>
+      <td><img src="docs/demo_menu.gif" width="350" alt="Menu Operation Demo"></td>
+    </tr>
+  </table>
+</div>
+
 # Features
-- Unobtrusive Design: No main window. Controls are accessible via the system tray (right-click menu).  
-- Floating Overlay: A minimal, semi-transparent timer overlay that stays on top (can be toggled ON/OFF).  
-- White Noise Player: Automatically plays focus sounds during work sessions and relaxing sounds during breaks.  
-- Customizable:  
+- **Unobtrusive Design**:  
+  No main window. Controls are accessible via the system tray (right-click menu).  
+- **Floating Overlay**:  
+  A minimal, semi-transparent timer overlay that stays on top (can be toggled ON/OFF).  
+- **White Noise Player**:  
+  Automatically plays focus sounds during work sessions and relaxing sounds during breaks.  
+- **Customizable**:  
   - Adjust overlay transparency and size.
   - Change volume independent of system volume.
   - Add your own MP3/WAV files easily.
-- Low Resource Usage: Built with Python (tkinter + pygame + pystray), designed to be lightweight.  
+- **Low Resource Usage**:  
+  Built with Python (tkinter + pygame + pystray), designed to be lightweight.  
 
 # Download
 Download the latest version from the [Releases Page](https://github.com/Takumi-Fukuzawa/LeanFocus/releases).  
@@ -77,6 +141,21 @@ Download the latest version from the [Releases Page](https://github.com/Takumi-F
 2. **Menu**: Right-click the tray icon to access settings, reset timer, or quit.  
 3. **Overlay**: Drag the timer text to move it anywhere on your screen. It remembers the position.  
 4. **Settings**: Use the "Settings..." menu to change sounds, volume, and appearance.  
+
+&nbsp;
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="center"><b>Context Menu</b></td>
+      <td align="center"><b>Settings Window</b></td>
+    </tr>
+    <tr>
+      <td valign="top"><img src="docs/context_menu.png" width="300" alt="メニュー画面"></td>
+      <td valign="top"><img src="docs/settings.png" width="300" alt="設定画面"></td>
+    </tr>
+  </table>
+</div>
 
 # How to Add Custom Sounds
 You can add your own favorite white noise or music!  

@@ -111,7 +111,7 @@ def tr(key):
 
 class ConfigWindow(tk.Toplevel):
     """
-    設定ウィンドウ（表示・音量）
+    設定ウィンドウ（表示・音量） - スクロール対応版
     """
     def __init__(self, parent, timer_window):
         super().__init__(parent)
@@ -119,34 +119,86 @@ class ConfigWindow(tk.Toplevel):
         self.app = timer_window.timer_app
         
         self.title(tr("settings_title"))
-        self.geometry("320x450")
-        self.resizable(False, False)
+        
+        # --- [修正] 画面中央に配置する計算を追加 ---
+        window_width = 370
+        window_height = 560
+        
+        # メインディスプレイの幅と高さを取得
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        
+        # 中央座標を計算
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        
+        # ジオメトリを設定 (サイズ + 位置)
+        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        # ----------------------------------------
+
+        self.resizable(True, True)
         self.attributes("-topmost", True)
 
-        main_frame = ttk.Frame(self, padding="20")
-        main_frame.pack(fill='both', expand=True)
+        # --- スクロール領域のセットアップ ---
+        # 1. 全体を包むコンテナ
+        container = ttk.Frame(self)
+        container.pack(fill="both", expand=True)
 
-        # === サウンド設定エリア ===
-        ttk.Label(main_frame, text=tr("sound_sec"), font=("", 10, "bold")).pack(anchor='w', pady=(0, 10))
+        # 2. キャンバス（スクロール機能の本体）
+        canvas = tk.Canvas(container)
         
-        # 音源リストの取得
-        # "None" を表示用の言葉（なし/None）に変換して表示したいが、
-        # Comboboxの値と内部ロジックを一致させる必要がある。
-        # ここではシンプルに、辞書のキーをそのまま使う。
-        # ただし "None" キーの表示だけローカライズする工夫を入れる。
+        # 3. スクロールバー
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        
+        # 4. コンテンツを配置するフレーム
+        main_frame = ttk.Frame(canvas, padding="20")
+
+        # フレーム内のサイズが変わったら、キャンバスのスクロール範囲(scrollregion)を更新する
+        main_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        # キャンバスの中にフレームを描画 (左上 anchor="nw")
+        canvas_frame_id = canvas.create_window((0, 0), window=main_frame, anchor="nw")
+
+        # キャンバス自体のサイズが変わったら、中のフレーム幅をキャンバス幅に合わせる
+        def on_canvas_configure(event):
+            canvas.itemconfig(canvas_frame_id, width=event.width)
+        
+        canvas.bind("<Configure>", on_canvas_configure)
+
+        # 配置 (キャンバスを左、スクロールバーを右)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # スクロールバーの動きをキャンバスに連動させる
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # --- マウスホイールでのスクロール設定 ---
+        def _on_mousewheel(event):
+            # 内容がウィンドウより大きい場合のみスクロールさせる
+            if canvas.bbox("all")[3] > canvas.winfo_height():
+                canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        # ウィンドウ全体にホイールイベントをバインド
+        self.bind("<MouseWheel>", _on_mousewheel)
+
+        # === 以下、ウィジェット配置 (親を self ではなく main_frame にする) ===
+        
+        # --- サウンド設定エリア ---
+        ttk.Label(main_frame, text=tr("sound_sec"), font=("", 10, "bold")).pack(anchor='w', pady=(0, 10))
         
         self.sound_keys = sorted(list(self.app.available_noises.keys()))
         if "None" in self.sound_keys:
             self.sound_keys.remove("None")
             self.sound_keys.insert(0, "None")
         
-        # 表示用のリストを作成 (None -> なし/None)
         display_values = [tr("none") if k == "None" else k for k in self.sound_keys]
 
         # 1. 作業用ノイズ
         ttk.Label(main_frame, text=tr("work_noise")).pack(anchor='w')
         current_work = self.app.config.get("work_noise", "None")
-        # 内部キーから表示用インデックスを探す
         work_idx = self.sound_keys.index(current_work) if current_work in self.sound_keys else 0
         
         self.combo_work = ttk.Combobox(main_frame, values=display_values, state="readonly")
@@ -178,7 +230,7 @@ class ConfigWindow(tk.Toplevel):
         # サイズ
         ttk.Label(main_frame, text=tr("size")).pack(anchor='w')
         self.size_var = tk.DoubleVar(value=timer_window.font_size)
-        scale_size = ttk.Scale(main_frame, from_=12, to=72, variable=self.size_var, command=self.on_visual_change)
+        scale_size = ttk.Scale(main_frame, from_=6, to=72, variable=self.size_var, command=self.on_visual_change)
         scale_size.pack(fill='x', pady=(0, 10))
 
         # 透明度
@@ -195,7 +247,6 @@ class ConfigWindow(tk.Toplevel):
 
     def on_sound_change(self, noise_type):
         """コンボボックスの変更をアプリに反映"""
-        # 表示用インデックスから内部キーを取得
         if noise_type == "work":
             idx = self.combo_work.current()
             key = self.sound_keys[idx]
@@ -234,6 +285,8 @@ class FloatingTimer(tk.Tk):
         )
         self.label.pack(expand=True, fill='both', padx=5, pady=5)
 
+        # 初期化時に一度ジオメトリを確定させるため更新
+        self.update_idletasks()
         self.refresh_layout()
 
         self.label.bind("<Button-1>", self.start_move)
@@ -249,8 +302,13 @@ class FloatingTimer(tk.Tk):
         self.update_timer_display()
 
     def refresh_layout(self):
-        win_w = int(self.font_size * 9.5)
-        win_h = int(self.font_size * 2.0)
+        # 1. まずフォントを適用して、Tkinterにサイズ計算させる
+        self.label.config(font=("Segoe UI", self.font_size, "bold"))
+        self.update_idletasks() # 描画更新待ち
+
+        # 2. ラベルが必要としている正確な幅と高さを取得 (固定倍率 9.5, 2.0 を廃止)
+        win_w = self.winfo_reqwidth()
+        win_h = self.winfo_reqheight()
         
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
@@ -261,11 +319,12 @@ class FloatingTimer(tk.Tk):
         if saved_x is not None and saved_y is not None:
             x, y = saved_x, saved_y
         else:
+            # デフォルト位置（右下）の計算
             x = screen_width - win_w - 30
             y = screen_height - win_h - 80 
         
+        # 3. 計算した正確なサイズと位置を適用
         self.geometry(f"{win_w}x{win_h}+{x}+{y}")
-        self.label.config(font=("Segoe UI", self.font_size, "bold"))
 
     def start_move(self, event):
         self.x = event.x
@@ -295,13 +354,20 @@ class FloatingTimer(tk.Tk):
         self.opacity = float(opacity)
         self.attributes("-alpha", self.opacity)
         
-        win_w = int(self.font_size * 9.5)
-        win_h = int(self.font_size * 2.0)
+        # 1. フォント設定を先に適用
+        self.label.config(font=("Segoe UI", self.font_size, "bold"))
+        self.update_idletasks() # サイズ計算のために更新待機
+        
+        # 2. 正確なサイズを取得
+        win_w = self.winfo_reqwidth()
+        win_h = self.winfo_reqheight()
+        
+        # 現在の位置を維持
         x = self.winfo_x()
         y = self.winfo_y()
-        self.geometry(f"{win_w}x{win_h}+{x}+{y}")
         
-        self.label.config(font=("Segoe UI", self.font_size, "bold"))
+        # 3. 新しいサイズを適用
+        self.geometry(f"{win_w}x{win_h}+{x}+{y}")
         
         self.timer_app.config["font_size"] = self.font_size
         self.timer_app.config["opacity"] = self.opacity
@@ -342,7 +408,27 @@ class FloatingTimer(tk.Tk):
             time_text = "--:--"
 
         display_text = f"{status_text}   {time_text}"
-        self.label.config(text=display_text, fg=color)
+        
+        # 現在のテキストと異なる場合のみ更新処理を行う（ちらつき防止）
+        if self.label.cget("text") != display_text:
+            self.label.config(text=display_text, fg=color)
+            
+            # --- [修正] テキスト変更に合わせてウィンドウサイズを再計算 ---
+            self.update_idletasks() # 描画計算を待機
+            
+            req_w = self.winfo_reqwidth()
+            req_h = self.winfo_reqheight()
+            
+            # 現在のサイズと必要なサイズが異なる場合のみリサイズ実行
+            if self.winfo_width() != req_w or self.winfo_height() != req_h:
+                x = self.winfo_x()
+                y = self.winfo_y()
+                self.geometry(f"{req_w}x{req_h}+{x}+{y}")
+            # -------------------------------------------------------
+        else:
+            # 色だけが変わるケース（稀ですが念のため）
+            if self.label.cget("fg") != color:
+                self.label.config(fg=color)
 
         if self.is_visible:
             self.lift()
@@ -449,8 +535,12 @@ class PomodoroTimer:
 
     def open_config_window(self):
         if self.floating_window:
-            if not self.floating_window.is_visible:
-                self.toggle_timer_display()
+            # --- [修正] 以下の3行を削除またはコメントアウト ---
+            # 非表示のときに設定を開いても、勝手に表示状態にしないようにする
+            # if not self.floating_window.is_visible:
+            #     self.toggle_timer_display()
+            # ---------------------------------------------
+            # 設定ウィンドウを開く
             ConfigWindow(self.floating_window, self.floating_window)
 
     def open_credits(self):
