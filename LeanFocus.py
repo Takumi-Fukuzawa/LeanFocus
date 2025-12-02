@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+LeanFocus - タスクトレイ常駐型ポモドーロタイマー
+メインウィンドウを持たず、フローティングオーバーレイとタスクトレイで操作する軽量タイマー。
+"""
+
 import threading
 import time
 import json
@@ -7,13 +12,16 @@ import subprocess
 import sys
 import tkinter as tk
 from tkinter import ttk
-from PIL import Image, ImageDraw
+import ctypes
+import locale
+
+# サードパーティ製ライブラリ
+from PIL import Image
 import pystray
 import pygame
-import ctypes
-import locale # [新機能] 言語設定の取得に使用
 
-# --- Windowsの高DPIスケーリングに対応 ---
+# --- Windowsの高DPIスケーリング対応 ---
+# 高解像度ディスプレイでUIがぼやけるのを防ぐ設定
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(2)
 except (AttributeError, OSError):
@@ -22,11 +30,15 @@ except (AttributeError, OSError):
     except (AttributeError, OSError):
         pass
 
-# --- グローバル設定 ---
+# =========================================
+# グローバル設定・定数
+# =========================================
 CONFIG_FILE = 'LeanFocus_config.json'
-WORK_DURATION = 25 * 60
-BREAK_DURATION = 5 * 60
+WORK_DURATION = 25 * 60  # 作業時間（秒）
+BREAK_DURATION = 5 * 60  # 休憩時間（秒）
 APP_NAME = "LeanFocus"
+
+# アセットパス設定
 ASSET_DIR = "assets"
 IMG_DIR = os.path.join(ASSET_DIR, "img")
 SOUND_DIR = os.path.join(ASSET_DIR, "sounds")
@@ -34,9 +46,12 @@ ICON_FILE = os.path.join(IMG_DIR, "icon.png")
 SOUND_NAMES_FILE = os.path.join(SOUND_DIR, "sound_names.json")
 CREDITS_FILE = os.path.join(ASSET_DIR, "CREDITS.txt")
 
+# 対応する音声ファイル形式
 SUPPORTED_EXTENSIONS = ('.mp3', '.wav', '.ogg')
 
-# --- [新機能] 翻訳辞書 ---
+# =========================================
+# 言語・翻訳設定
+# =========================================
 TRANSLATIONS = {
     "ja": {
         "settings_title": "設定",
@@ -49,7 +64,7 @@ TRANSLATIONS = {
         "close": "閉じる",
         "work_noise": "作業用ノイズ",
         "break_noise": "休憩用ノイズ",
-        "none": "なし", # 表示用
+        "none": "なし",
         "stop_timer": "タイマーを停止",
         "show_timer": "タイマーを表示",
         "settings_menu": "設定...",
@@ -92,26 +107,31 @@ TRANSLATIONS = {
     }
 }
 
-# 言語の自動検出
 def get_language():
+    """システムロケールを取得して言語コード('ja' or 'en')を返す"""
     try:
         lang_code, _ = locale.getdefaultlocale()
         if lang_code and lang_code.startswith('ja'):
             return 'ja'
     except:
         pass
-    return 'en' # デフォルトは英語
+    return 'en'
 
 CURRENT_LANG = get_language()
 
 def tr(key):
-    """翻訳ヘルパー関数"""
+    """キーに対応する翻訳テキストを返す"""
     return TRANSLATIONS[CURRENT_LANG].get(key, key)
 
 
+# =========================================
+# クラス定義: 設定ウィンドウ
+# =========================================
 class ConfigWindow(tk.Toplevel):
     """
-    設定ウィンドウ（表示・音量） - スクロール対応版
+    設定画面クラス。
+    サウンド選択、音量、タイマーの見た目（サイズ・透明度）を設定する。
+    画面サイズが小さい環境のためにスクロールバーを備えている。
     """
     def __init__(self, parent, timer_window):
         super().__init__(parent)
@@ -120,73 +140,54 @@ class ConfigWindow(tk.Toplevel):
         
         self.title(tr("settings_title"))
         
-        # --- [修正] 画面中央に配置する計算を追加 ---
+        # ウィンドウを画面中央に配置する計算
         window_width = 370
         window_height = 560
-        
-        # メインディスプレイの幅と高さを取得
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
-        
-        # 中央座標を計算
         x = (screen_width - window_width) // 2
         y = (screen_height - window_height) // 2
-        
-        # ジオメトリを設定 (サイズ + 位置)
         self.geometry(f"{window_width}x{window_height}+{x}+{y}")
-        # ----------------------------------------
 
         self.resizable(True, True)
         self.attributes("-topmost", True)
 
-        # --- スクロール領域のセットアップ ---
-        # 1. 全体を包むコンテナ
+        # --- スクロール領域の構築 ---
         container = ttk.Frame(self)
         container.pack(fill="both", expand=True)
 
-        # 2. キャンバス（スクロール機能の本体）
         canvas = tk.Canvas(container)
-        
-        # 3. スクロールバー
         scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
-        
-        # 4. コンテンツを配置するフレーム
         main_frame = ttk.Frame(canvas, padding="20")
 
-        # フレーム内のサイズが変わったら、キャンバスのスクロール範囲(scrollregion)を更新する
+        # フレームサイズ変更時にスクロール範囲を更新
         main_frame.bind(
             "<Configure>",
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
 
-        # キャンバスの中にフレームを描画 (左上 anchor="nw")
         canvas_frame_id = canvas.create_window((0, 0), window=main_frame, anchor="nw")
 
-        # キャンバス自体のサイズが変わったら、中のフレーム幅をキャンバス幅に合わせる
+        # キャンバスサイズ変更時にフレーム幅を合わせる
         def on_canvas_configure(event):
             canvas.itemconfig(canvas_frame_id, width=event.width)
         
         canvas.bind("<Configure>", on_canvas_configure)
 
-        # 配置 (キャンバスを左、スクロールバーを右)
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
-        
-        # スクロールバーの動きをキャンバスに連動させる
         canvas.configure(yscrollcommand=scrollbar.set)
 
-        # --- マウスホイールでのスクロール設定 ---
+        # マウスホイールでのスクロール対応
         def _on_mousewheel(event):
-            # 内容がウィンドウより大きい場合のみスクロールさせる
             if canvas.bbox("all")[3] > canvas.winfo_height():
                 canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         
-        # ウィンドウ全体にホイールイベントをバインド
         self.bind("<MouseWheel>", _on_mousewheel)
 
-        # === 以下、ウィジェット配置 (親を self ではなく main_frame にする) ===
+        # --- UI部品の配置 ---
         
-        # --- サウンド設定エリア ---
+        # 1. サウンド設定
         ttk.Label(main_frame, text=tr("sound_sec"), font=("", 10, "bold")).pack(anchor='w', pady=(0, 10))
         
         self.sound_keys = sorted(list(self.app.available_noises.keys()))
@@ -196,7 +197,7 @@ class ConfigWindow(tk.Toplevel):
         
         display_values = [tr("none") if k == "None" else k for k in self.sound_keys]
 
-        # 1. 作業用ノイズ
+        # 作業用ノイズ選択
         ttk.Label(main_frame, text=tr("work_noise")).pack(anchor='w')
         current_work = self.app.config.get("work_noise", "None")
         work_idx = self.sound_keys.index(current_work) if current_work in self.sound_keys else 0
@@ -206,7 +207,7 @@ class ConfigWindow(tk.Toplevel):
         self.combo_work.pack(fill='x', pady=(0, 10))
         self.combo_work.bind("<<ComboboxSelected>>", lambda e: self.on_sound_change("work"))
 
-        # 2. 休憩用ノイズ
+        # 休憩用ノイズ選択
         ttk.Label(main_frame, text=tr("break_noise")).pack(anchor='w')
         current_break = self.app.config.get("break_noise", "None")
         break_idx = self.sound_keys.index(current_break) if current_break in self.sound_keys else 0
@@ -216,7 +217,7 @@ class ConfigWindow(tk.Toplevel):
         self.combo_break.pack(fill='x', pady=(0, 10))
         self.combo_break.bind("<<ComboboxSelected>>", lambda e: self.on_sound_change("break"))
 
-        # 3. 音量
+        # 音量スライダー
         ttk.Label(main_frame, text=tr("volume")).pack(anchor='w')
         self.volume_var = tk.DoubleVar(value=self.app.config.get("volume", 1.0))
         scale_vol = ttk.Scale(main_frame, from_=0.0, to=1.0, variable=self.volume_var, command=self.on_volume_change)
@@ -224,54 +225,63 @@ class ConfigWindow(tk.Toplevel):
 
         ttk.Separator(main_frame, orient='horizontal').pack(fill='x', pady=15)
 
-        # === 表示設定エリア ===
+        # 2. 表示設定
         ttk.Label(main_frame, text=tr("visual_sec"), font=("", 10, "bold")).pack(anchor='w', pady=(0, 10))
 
-        # サイズ
+        # サイズ調整
         ttk.Label(main_frame, text=tr("size")).pack(anchor='w')
         self.size_var = tk.DoubleVar(value=timer_window.font_size)
         scale_size = ttk.Scale(main_frame, from_=6, to=72, variable=self.size_var, command=self.on_visual_change)
         scale_size.pack(fill='x', pady=(0, 10))
 
-        # 透明度
+        # 透明度調整
         ttk.Label(main_frame, text=tr("opacity")).pack(anchor='w')
         self.alpha_var = tk.DoubleVar(value=timer_window.opacity)
         scale_alpha = ttk.Scale(main_frame, from_=0.1, to=1.0, variable=self.alpha_var, command=self.on_visual_change)
         scale_alpha.pack(fill='x', pady=(0, 5))
 
-        # 説明
         ttk.Label(main_frame, text=tr("window_hint"), font=("", 8), foreground="gray").pack(pady=(5, 0))
 
         # 閉じるボタン
         ttk.Button(main_frame, text=tr("close"), command=self.destroy).pack(side='bottom', anchor='e', pady=10)
 
     def on_sound_change(self, noise_type):
-        """コンボボックスの変更をアプリに反映"""
+        """コンボボックスの選択変更を反映"""
         if noise_type == "work":
             idx = self.combo_work.current()
             key = self.sound_keys[idx]
         else:
             idx = self.combo_break.current()
             key = self.sound_keys[idx]
-        
         self.app.set_noise_config(noise_type, key)
 
     def on_visual_change(self, event=None):
+        """スライダー操作に合わせてリアルタイムで見た目を更新"""
         self.timer_window.apply_visual_settings(self.size_var.get(), self.alpha_var.get())
 
     def on_volume_change(self, event=None):
+        """音量変更を反映"""
         self.app.set_volume(self.volume_var.get())
 
 
+# =========================================
+# クラス定義: フローティングタイマー（オーバーレイ）
+# =========================================
 class FloatingTimer(tk.Tk):
+    """
+    常に最前面に表示される透過ウィンドウ。
+    タイマーの残り時間を表示し、ドラッグ移動やクリック操作を受け付ける。
+    """
     def __init__(self, timer_app):
         super().__init__()
         self.timer_app = timer_app
         
+        # ウィンドウ枠（タイトルバー等）を削除し、最前面固定
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.config(bg="black")
 
+        # 初期設定の読み込み
         self.font_size = self.timer_app.config.get("font_size", 24)
         self.opacity = self.timer_app.config.get("opacity", 0.7)
         self.attributes("-alpha", self.opacity)
@@ -285,15 +295,21 @@ class FloatingTimer(tk.Tk):
         )
         self.label.pack(expand=True, fill='both', padx=5, pady=5)
 
-        # 初期化時に一度ジオメトリを確定させるため更新
+        # 初期サイズ計算
         self.update_idletasks()
         self.refresh_layout()
 
-        self.label.bind("<Button-1>", self.start_move)
-        self.label.bind("<B1-Motion>", self.do_move)
-        self.label.bind("<ButtonRelease-1>", self.on_release)
-        self.label.bind("<Enter>", self.on_hover_enter)
-        self.label.bind("<Leave>", self.on_hover_leave)
+        # ドラッグ・クリック判定用の変数
+        self.drag_start_x_root = 0
+        self.drag_start_y_root = 0
+        self.click_start_time = 0
+
+        # イベントバインド
+        self.label.bind("<Button-1>", self.start_move)        # クリック開始
+        self.label.bind("<B1-Motion>", self.do_move)          # ドラッグ中
+        self.label.bind("<ButtonRelease-1>", self.on_release) # クリック終了
+        self.label.bind("<Enter>", self.on_hover_enter)       # マウスホバー
+        self.label.bind("<Leave>", self.on_hover_leave)       # ホバー解除
         
         self.x = 0
         self.y = 0
@@ -302,11 +318,11 @@ class FloatingTimer(tk.Tk):
         self.update_timer_display()
 
     def refresh_layout(self):
-        # 1. まずフォントを適用して、Tkinterにサイズ計算させる
+        """現在のフォントサイズに合わせてウィンドウサイズと位置を再計算"""
         self.label.config(font=("Segoe UI", self.font_size, "bold"))
-        self.update_idletasks() # 描画更新待ち
+        self.update_idletasks() # 描画情報を更新
 
-        # 2. ラベルが必要としている正確な幅と高さを取得 (固定倍率 9.5, 2.0 を廃止)
+        # 実際に必要なテキストサイズを取得
         win_w = self.winfo_reqwidth()
         win_h = self.winfo_reqheight()
         
@@ -319,18 +335,22 @@ class FloatingTimer(tk.Tk):
         if saved_x is not None and saved_y is not None:
             x, y = saved_x, saved_y
         else:
-            # デフォルト位置（右下）の計算
+            # 初回は画面右下に配置
             x = screen_width - win_w - 30
             y = screen_height - win_h - 80 
         
-        # 3. 計算した正確なサイズと位置を適用
         self.geometry(f"{win_w}x{win_h}+{x}+{y}")
 
     def start_move(self, event):
+        """ドラッグ開始：開始位置と時刻を記録"""
         self.x = event.x
         self.y = event.y
+        self.drag_start_x_root = event.x_root
+        self.drag_start_y_root = event.y_root
+        self.click_start_time = time.time()
 
     def do_move(self, event):
+        """ドラッグ中：ウィンドウ位置を更新"""
         deltax = event.x - self.x
         deltay = event.y - self.y
         x = self.winfo_x() + deltax
@@ -338,35 +358,60 @@ class FloatingTimer(tk.Tk):
         self.geometry(f"+{x}+{y}")
 
     def on_release(self, event):
+        """
+        クリック解放時：ドラッグかクリックかを判定して処理を分岐
+        - 短い時間かつ移動距離が少ない場合 -> クリック（一時停止/再開）
+        - それ以外 -> ドラッグ終了（位置保存のみ）
+        """
+        press_duration = time.time() - self.click_start_time
+        
+        dx = event.x_root - self.drag_start_x_root
+        dy = event.y_root - self.drag_start_y_root
+        distance_sq = dx**2 + dy**2 # 距離の2乗で計算（軽量化）
+
+        # 判定閾値: 0.3秒未満 かつ 移動距離5px未満(2乗で25)
+        is_short_click = press_duration < 0.3
+        is_small_move = distance_sq < 25 
+
+        if is_short_click and is_small_move:
+            self.toggle_timer_action()
+        
+        # 新しい位置を保存
         self.timer_app.config["window_x"] = self.winfo_x()
         self.timer_app.config["window_y"] = self.winfo_y()
         self.timer_app.save_config()
 
+    def toggle_timer_action(self):
+        """タイマーの状態をトグル（停止中なら開始、進行中なら停止）"""
+        state = self.timer_app.state
+        if state in [PomodoroTimer.STATE_WORK, PomodoroTimer.STATE_BREAK]:
+            self.timer_app.stop_pomodoro()
+        else:
+            self.timer_app.start_pomodoro()
+
     def on_hover_enter(self, event):
+        """マウスホバー時に少し不透明度を上げて見やすくする"""
         current = self.attributes("-alpha")
         self.attributes("-alpha", min(1.0, current + 0.2))
 
     def on_hover_leave(self, event):
+        """ホバー解除時に元の不透明度に戻す"""
         self.attributes("-alpha", self.opacity)
 
     def apply_visual_settings(self, size, opacity):
+        """設定画面からの変更を適用"""
         self.font_size = int(float(size))
         self.opacity = float(opacity)
         self.attributes("-alpha", self.opacity)
         
-        # 1. フォント設定を先に適用
         self.label.config(font=("Segoe UI", self.font_size, "bold"))
-        self.update_idletasks() # サイズ計算のために更新待機
+        self.update_idletasks()
         
-        # 2. 正確なサイズを取得
+        # フォントサイズ変更に伴いウィンドウサイズも更新
         win_w = self.winfo_reqwidth()
         win_h = self.winfo_reqheight()
-        
-        # 現在の位置を維持
         x = self.winfo_x()
         y = self.winfo_y()
-        
-        # 3. 新しいサイズを適用
         self.geometry(f"{win_w}x{win_h}+{x}+{y}")
         
         self.timer_app.config["font_size"] = self.font_size
@@ -374,6 +419,7 @@ class FloatingTimer(tk.Tk):
         self.timer_app.save_config()
 
     def toggle_visibility(self, show):
+        """オーバーレイの表示/非表示切り替え"""
         if show:
             self.deiconify()
             self.is_visible = True
@@ -385,6 +431,7 @@ class FloatingTimer(tk.Tk):
             self.is_visible = False
 
     def update_timer_display(self):
+        """タイマーの表示を定期更新するループ処理"""
         state = self.timer_app.state
         remaining = max(0, self.timer_app.remaining_time)
         mins, secs = divmod(remaining, 60)
@@ -393,6 +440,7 @@ class FloatingTimer(tk.Tk):
         status_text = ""
         color = "#E0E0E0"
         
+        # 状態に応じたテキストと色の設定
         if state == PomodoroTimer.STATE_WORK:
             status_text = "WORK"
             color = "#9E9E9E"
@@ -409,35 +457,38 @@ class FloatingTimer(tk.Tk):
 
         display_text = f"{status_text}   {time_text}"
         
-        # 現在のテキストと異なる場合のみ更新処理を行う（ちらつき防止）
+        # テキストが変わった時だけ更新＆リサイズ（チラつき防止）
         if self.label.cget("text") != display_text:
             self.label.config(text=display_text, fg=color)
             
-            # --- [修正] テキスト変更に合わせてウィンドウサイズを再計算 ---
-            self.update_idletasks() # 描画計算を待機
-            
+            self.update_idletasks()
             req_w = self.winfo_reqwidth()
             req_h = self.winfo_reqheight()
             
-            # 現在のサイズと必要なサイズが異なる場合のみリサイズ実行
+            # コンテンツサイズに合わせてウィンドウサイズを自動調整
             if self.winfo_width() != req_w or self.winfo_height() != req_h:
                 x = self.winfo_x()
                 y = self.winfo_y()
                 self.geometry(f"{req_w}x{req_h}+{x}+{y}")
-            # -------------------------------------------------------
         else:
-            # 色だけが変わるケース（稀ですが念のため）
+            # 色のみの変更が必要な場合
             if self.label.cget("fg") != color:
                 self.label.config(fg=color)
 
         if self.is_visible:
             self.lift()
-            self.attributes("-topmost", True)
 
+        # 200ms後に再実行
         self.after(200, self.update_timer_display)
 
 
+# =========================================
+# クラス定義: ポモドーロタイマー本体（ロジック）
+# =========================================
 class PomodoroTimer:
+    """
+    タイマーの状態管理、スレッド制御、音声再生を担うメインクラス。
+    """
     STATE_STOPPED = "停止中"
     STATE_WORK = "作業中"
     STATE_BREAK = "休憩中"
@@ -450,6 +501,7 @@ class PomodoroTimer:
         
         self.stop_event = threading.Event()
         self.timer_thread = None
+        self.end_time = 0 # 終了予定時刻（ドリフト防止用）
         
         self.available_noises = self._scan_assets()
         self.config = self.load_config() 
@@ -465,11 +517,12 @@ class PomodoroTimer:
         except pygame.error: pass
 
     def _scan_assets(self) -> dict:
-        # [変更] 内部キーを "None" (英語) に統一
+        """assets/soundsフォルダ内の音声をスキャンして辞書化する"""
         noises = {"None": None}
         if not os.path.isdir(SOUND_DIR): return noises
         
         name_map = {}
+        # 表示名の定義ファイルを読み込み
         if os.path.exists(SOUND_NAMES_FILE):
             try:
                 with open(SOUND_NAMES_FILE, 'r', encoding='utf-8') as f:
@@ -482,7 +535,7 @@ class PomodoroTimer:
                 if os.path.isfile(file_path) and filename.lower().endswith(SUPPORTED_EXTENSIONS):
                     if filename in name_map:
                         entry = name_map[filename]
-                        # [新機能] 多言語対応: 辞書なら現在の言語を取得、文字列ならそのまま
+                        # 言語設定に応じて表示名を選択
                         if isinstance(entry, dict):
                             menu_key = entry.get(CURRENT_LANG, entry.get("en", filename))
                         else:
@@ -494,6 +547,7 @@ class PomodoroTimer:
         return noises
 
     def load_config(self):
+        """設定ファイル(JSON)の読み込み"""
         default = {
             "work_noise": "None", "break_noise": "None", "volume": 1.0,
             "show_timer": False, 
@@ -504,14 +558,13 @@ class PomodoroTimer:
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                 d = json.load(f)
             
-            # [互換性] 古い設定の "なし" を "None" に読み替える
+            # 旧バージョンの互換性対応
             work = d.get("work_noise", "None")
             if work == "なし": work = "None"
             
             break_ = d.get("break_noise", "None")
             if break_ == "なし": break_ = "None"
 
-            # 検証
             if work not in self.available_noises: work = "None"
             if break_ not in self.available_noises: break_ = "None"
             
@@ -528,22 +581,19 @@ class PomodoroTimer:
         except json.JSONDecodeError: return default
 
     def save_config(self):
+        """設定をJSONファイルに保存"""
         try:
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, indent=4)
         except IOError: pass
 
     def open_config_window(self):
+        """設定ウィンドウを開く"""
         if self.floating_window:
-            # --- [修正] 以下の3行を削除またはコメントアウト ---
-            # 非表示のときに設定を開いても、勝手に表示状態にしないようにする
-            # if not self.floating_window.is_visible:
-            #     self.toggle_timer_display()
-            # ---------------------------------------------
-            # 設定ウィンドウを開く
             ConfigWindow(self.floating_window, self.floating_window)
 
     def open_credits(self):
+        """クレジットファイルを開く"""
         if os.path.exists(CREDITS_FILE):
             try:
                 if os.name == 'nt':
@@ -565,6 +615,7 @@ class PomodoroTimer:
         if noise_key not in self.available_noises: return
         self.config[f"{noise_type}_noise"] = noise_key
         self.save_config()
+        # 現在の状態と一致していれば即座に音声を切り替え
         if (self.state == self.STATE_WORK and noise_type == "work") or \
            (self.state == self.STATE_BREAK and noise_type == "break"):
             self.play_sound_from_key(noise_key)
@@ -587,7 +638,7 @@ class PomodoroTimer:
             
             if file_path and os.path.exists(file_path):
                 pygame.mixer.music.load(file_path)
-                pygame.mixer.music.play(-1)
+                pygame.mixer.music.play(-1) # ループ再生
         except pygame.error: pass
 
     def stop_sound(self):
@@ -595,6 +646,7 @@ class PomodoroTimer:
         except pygame.error: pass
 
     def start_pomodoro(self):
+        """タイマーを開始（または再開）する"""
         if self.state == self.STATE_WORK or self.state == self.STATE_BREAK: return
         sound_key = "None"
         if self.state == self.STATE_STOPPED:
@@ -605,6 +657,10 @@ class PomodoroTimer:
             self.state = self.resume_state
             if self.state == self.STATE_WORK: sound_key = self.config.get("work_noise")
             elif self.state == self.STATE_BREAK: sound_key = self.config.get("break_noise")
+        
+        # 終了予定時刻を現在時刻から計算（タイマー精度の確保）
+        self.end_time = time.time() + self.remaining_time
+
         self.play_sound_from_key(sound_key)
         self.stop_event.clear()
         self.timer_thread = threading.Thread(target=self.run_timer, daemon=True)
@@ -612,6 +668,7 @@ class PomodoroTimer:
         self._update_menu()
 
     def stop_pomodoro(self):
+        """タイマーを一時停止する"""
         if self.state == self.STATE_STOPPED or self.state == self.STATE_PAUSED: return
         self.resume_state = self.state
         self.state = self.STATE_PAUSED
@@ -623,6 +680,7 @@ class PomodoroTimer:
         self._update_menu()
 
     def reset_timer(self):
+        """タイマーを初期状態にリセットする"""
         self.stop_event.set()
         if self.timer_thread:
             self.timer_thread.join()
@@ -633,14 +691,29 @@ class PomodoroTimer:
         self._update_menu()
 
     def run_timer(self):
+        """タイマースレッドのメインループ"""
         while not self.stop_event.is_set():
-            if self.stop_event.wait(1.0): break
+            # 0.1秒間隔でチェック（応答性確保のため短く設定）
+            if self.stop_event.wait(0.1): break
             if self.state == self.STATE_STOPPED or self.state == self.STATE_PAUSED: break
-            self.remaining_time -= 1
-            if self.remaining_time < 0:
+            
+            # 現在時刻と終了予定時刻の差分から残り時間を計算
+            # sleepによる減算方式よりも長時間での精度が高い
+            now = time.time()
+            remaining_seconds = self.end_time - now
+            self.remaining_time = int(remaining_seconds + 0.9) 
+
+            if remaining_seconds <= 0:
+                self.remaining_time = 0
                 self._transition_state()
+                # 状態遷移後、次の終了時刻を設定してループ継続
+                if self.state in [self.STATE_WORK, self.STATE_BREAK]:
+                    self.end_time = time.time() + self.remaining_time
+                else:
+                    break
 
     def _transition_state(self):
+        """作業時間 <-> 休憩時間の自動切り替え"""
         if self.state == self.STATE_WORK:
             self.state = self.STATE_BREAK
             self.remaining_time = BREAK_DURATION
@@ -657,7 +730,7 @@ class PomodoroTimer:
             except Exception: pass
 
     def get_menu_state_text(self) -> str:
-        # 状態文字列の多言語対応
+        """トレイメニューに表示する状態テキストを生成"""
         st_text = ""
         if self.state == self.STATE_STOPPED: st_text = tr("state_stopped")
         elif self.state == self.STATE_WORK: st_text = tr("state_work")
@@ -683,8 +756,9 @@ class PomodoroTimer:
         if self.icon: self.icon.stop()
         if self.floating_window: self.floating_window.quit()
 
-# --- pystray設定 ---
-
+# =========================================
+# タスクトレイアイコンの設定・実行
+# =========================================
 def run_tray_icon(timer_app):
     def on_start_stop(icon, item):
         if timer_app.state in [PomodoroTimer.STATE_WORK, PomodoroTimer.STATE_BREAK]:
@@ -712,7 +786,6 @@ def run_tray_icon(timer_app):
 
     def generate_noise_menu(type_):
         key = "None"
-        # 表示名を切り替える (None -> なし/None)
         display_key = tr("none")
         
         if key in timer_app.available_noises:
@@ -741,21 +814,27 @@ def run_tray_icon(timer_app):
     try:
         icon_image = Image.open(ICON_FILE)
     except Exception:
+        # アイコン読み込み失敗時のフォールバック（透明な画像）
         icon_image = Image.new('RGBA', (64, 64), (0,0,0,0))
         
     icon = pystray.Icon(APP_NAME, icon_image, APP_NAME, menu)
     timer_app.icon = icon
     icon.run()
 
-# --- メイン実行 ---
+# =========================================
+# メインエントリーポイント
+# =========================================
 def main():
     app = PomodoroTimer()
     
+    # タスクトレイアイコンを別スレッドで実行
     tray_thread = threading.Thread(target=run_tray_icon, args=(app,), daemon=True)
     tray_thread.start()
 
+    # GUIメインループ（メインスレッドで実行する必要がある）
     app.floating_window = FloatingTimer(app)
     
+    # 設定に応じて初期表示状態を決定
     if app.config.get("show_timer", False):
         app.floating_window.deiconify()
         app.floating_window.is_visible = True
